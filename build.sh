@@ -307,6 +307,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/AgentUsage/Harness/ClaudeReader.swift
         Sources/Vorssaint/Services/AgentUsage/Harness/CodexReader.swift
         Sources/Vorssaint/Services/AgentUsage/Harness/OpenCodeReader.swift
+        Sources/Vorssaint/Services/AgentUsage/Harness/OhMyPiReader.swift
         Sources/Vorssaint/Services/AgentUsage/Harness/CopilotReader.swift
         Sources/Vorssaint/Services/AgentUsage/Harness/CursorReader.swift
         Sources/Vorssaint/Services/AgentUsage/Harness/CursorTranscriptAccess.swift

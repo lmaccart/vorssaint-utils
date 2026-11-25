@@ -5,13 +5,13 @@ import Combine
 import Foundation
 import Network
 
-/// Reads Claude Code, Codex and GitHub Copilot usage from local session logs, and
-/// OpenCode usage from its database, while the AI section is on, along with
-/// the plan limits the Claude app saves. The files are read where they are,
-/// incrementally, and nothing is copied or sent: only counters are kept, in
-/// memory and in the app's private folder so the next launch reads only what
-/// the agents wrote meanwhile. OpenCode's stay in memory only, and its
-/// database is read again at each launch. Claude Code checks account-wide
+/// Reads Claude Code, Codex, Oh My Pi and GitHub Copilot usage from local
+/// session logs, and OpenCode usage from its database, while the AI section
+/// is on, along with the plan limits the Claude app saves. The files are
+/// read where they are, incrementally, and nothing is copied or sent: only
+/// counters are kept, in memory and in the app's private folder so the next
+/// launch reads only what the agents wrote meanwhile. The database's stay
+/// in memory only, and it is read again at each launch. Claude Code checks account-wide
 /// limits through its own CLI, including use on other machines. The public
 /// price list is fetched only when the person keeps prices up to date.
 ///
@@ -376,12 +376,12 @@ final class AgentUsageService: ObservableObject {
         if AgentUsageArchive.save(contents) { savedMark = mark }
     }
 
-    /// Changes whenever a log is read further, replaced or let go. OpenCode,
-    /// which is never saved, leaves it alone.
+    /// Changes whenever a log is read further, replaced or let go. The
+    /// databases, which are never saved, leave it alone.
     private var progressMark: Int {
-        let records = store.records.reduce(0) { $1.provider == .opencode ? $0 : $0 + 1 }
+        let records = store.records.reduce(0) { $1.provider.isDatabase ? $0 : $0 + 1 }
         return cursors.values.reduce(records) { mark, cursor in
-            guard cursor.provider != .opencode else { return mark }
+            guard !cursor.provider.isDatabase else { return mark }
             var hasher = Hasher()
             hasher.combine(cursor.path)
             hasher.combine(cursor.offset)
@@ -452,7 +452,7 @@ final class AgentUsageService: ObservableObject {
         // A turn gone quiet, as while it waits for an approval, is noticed
         // as soon as its work resumes.
         var working = Set(store.turns.keys).union(store.waiting.keys)
-        // An OpenCode turn is kept by database and session.
+        // A database agent's turn is kept by database and session.
         for key in working {
             if let mark = key.firstIndex(of: "#") { working.insert(String(key[..<mark])) }
         }
@@ -569,8 +569,8 @@ final class AgentUsageService: ObservableObject {
             let entries = provider.reader.parse(line, state: &cursor.state, now: now)
             guard !entries.isEmpty else { return }
             changed = true
-            let isSubagent = provider == .opencode && !cursor.state.parentSession.isEmpty
-            let turnFile = provider == .opencode && !cursor.state.session.isEmpty ? "\(path)#\(cursor.state.session)" : path
+            let isSubagent = provider.isDatabase && !cursor.state.parentSession.isEmpty
+            let turnFile = provider.isDatabase && !cursor.state.session.isEmpty ? "\(path)#\(cursor.state.session)" : path
             let tracksTurns = isSubagent ? false : cursor.tracksTurns
             let parent = isSubagent ? "\(path)#\(cursor.state.parentSession)"
                 : cursor.parent ?? cursor.codexParent(among: cursors)

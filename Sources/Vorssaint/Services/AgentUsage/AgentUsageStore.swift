@@ -278,7 +278,7 @@ final class AgentUsageStore {
             let priced = AgentPricing.cost(combined, model: old.model, at: hasEventTimestamp ? date : nil)
             let newCost: Double?
             let isReported: Bool
-            if record.provider == .opencode {
+            if record.provider.isDatabase {
                 if record.reportedCost {
                     newCost = record.cost
                     isReported = true
@@ -402,7 +402,8 @@ final class AgentUsageStore {
             let priced = AgentPricing.cost(billable, model: records[position].model, at: date)
             // A zero OpenCode recorded for a model the list still does not
             // know stays that reply's cost.
-            let recordedZero = records[position].provider == .opencode && records[position].cost == 0
+            let recordedZero = (records[position].provider.isDatabase || records[position].provider == .omp)
+                && records[position].cost == 0
             records[position].cost = priced.cost ?? (recordedZero ? 0 : nil)
             records[position].savings = priced.savings
         }
@@ -505,8 +506,8 @@ final class AgentUsageStore {
     var showsClaudeTurn: Bool { turns.values.contains { $0.provider == .claude } }
 
     /// What is kept between launches: every counter the logs gave, and none
-    /// of their text. OpenCode's database is read again at each launch, so
-    /// nothing it gave is kept.
+    /// of their text. The agents' databases are read again at each launch, so
+    /// nothing they gave is kept.
     struct Saved: Equatable {
         struct Record: Equatable {
             let key: String
@@ -526,14 +527,14 @@ final class AgentUsageStore {
     var saved: Saved {
         var keys = [String](repeating: "", count: records.count)
         for (key, position) in index { keys[position] = key }
-        let kept = records.indices.filter { records[$0].provider != .opencode }.map {
+        let kept = records.indices.filter { !records[$0].provider.isDatabase }.map {
             Saved.Record(key: keys[$0], record: records[$0], billable: billables[$0], sources: sources[$0])
         }
         return Saved(records: kept,
                      limits: limits.values.sorted { $0.provider.rawValue < $1.provider.rawValue },
                      codexPlan: codexPlan, codexPlanObserved: codexPlanObserved,
-                     turns: turns.values.filter { $0.provider != .opencode }.sorted { $0.id < $1.id },
-                     waiting: waiting.values.filter { $0.provider != .opencode }.sorted { $0.id < $1.id })
+                     turns: turns.values.filter { !$0.provider.isDatabase }.sorted { $0.id < $1.id },
+                     waiting: waiting.values.filter { !$0.provider.isDatabase }.sorted { $0.id < $1.id })
     }
 
     convenience init(saved: Saved) {
@@ -641,7 +642,7 @@ struct AgentLogRoot: Equatable {
         } : []
         return claude + [(AgentProvider.codex, ".codex/sessions"), (.codex, ".codex/archived_sessions"),
          (.opencode, ".local/share/opencode"), (.copilot, ".copilot/session-state"),
-         (.cursor, ".cursor/projects")].compactMap { provider, path in
+         (.cursor, ".cursor/projects"), (.omp, ".omp/agent/sessions")].compactMap { provider, path in
             guard providers.contains(provider) else { return nil }
             return AgentLogRoot(provider: provider, url: canonical(home.appending(path: path, directoryHint: .isDirectory)))
         }
@@ -667,6 +668,12 @@ struct AgentLogRoot: Equatable {
         guard path.hasPrefix(prefix) else { return false }
         if provider == .opencode { return path == url.appending(path: AgentOpenCodeReader.database).path }
         guard path.hasSuffix(".jsonl") else { return false }
+        if provider == .omp {
+            // A session of its own, or a subagent's session kept inside its
+            // session's folder; the change log kept beside those is no log.
+            let parts = path.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
+            return (parts.count == 2 || parts.count == 3) && parts.last != "changes.jsonl"
+        }
         let parts = path.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
         if provider == .copilot {
             return parts.count == 2 && !parts[0].isEmpty && !parts[0].hasPrefix(".") && parts[1] == "events.jsonl"
@@ -777,7 +784,7 @@ final class AgentLogCursor {
     let cursorAccess: CursorTranscriptAccess?
     /// Subagents report to a turn another file tracks.
     var tracksTurns: Bool {
-        provider == .claude ? parent == nil : (provider == .codex ? !state.codexSubagent : true)
+        provider == .claude || provider == .omp ? parent == nil : (provider == .codex ? !state.codexSubagent : true)
     }
     /// The session log a Claude subagent works for.
     let parent: String?
@@ -809,7 +816,8 @@ final class AgentLogCursor {
         self.path = path
         self.provider = provider
         cursorAccess = provider == .cursor ? cursorRoot.map { CursorTranscriptAccess(root: $0) } : nil
-        let parent = provider == .claude ? AgentLogCursor.parent(of: path) : nil
+        let parent = provider == .claude ? AgentLogCursor.parent(of: path)
+            : provider == .omp ? AgentLogCursor.ohMyPiParent(of: path) : nil
         self.parent = parent
         if provider == .cursor { CursorReader.adopt(path: path, into: &state) }
     }
@@ -967,6 +975,16 @@ final class AgentLogCursor {
         guard let range = path.range(of: "/subagents/", options: .backwards) else { return nil }
         return String(path[..<range.lowerBound]) + ".jsonl"
     }
+
+    /// Oh My Pi keeps a subagent's session inside its session's own folder,
+    /// named for the session beside it: `<session>/<agent>.jsonl` belongs to
+    /// `<session>.jsonl`.
+    static func ohMyPiParent(of path: String) -> String? {
+        guard path.hasSuffix(".jsonl") else { return nil }
+        let parts = path.split(separator: "/").map(String.init)
+        guard let root = parts.lastIndex(of: "sessions"), parts.count - root == 4 else { return nil }
+        return "/" + parts.dropLast().joined(separator: "/") + ".jsonl"
+    }
 }
 
 enum AgentLogReader {
@@ -1118,7 +1136,8 @@ enum AgentLogReader {
             guard root.accepts(url.path),
                   let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
                   let modified = values.contentModificationDate, modified >= horizon else { return }
-            let subagent = root.provider == .claude && AgentLogCursor.parent(of: url.path) != nil
+            let subagent = (root.provider == .claude && AgentLogCursor.parent(of: url.path) != nil)
+                || (root.provider == .omp && AgentLogCursor.ohMyPiParent(of: url.path) != nil)
             found.append((url.path, root.provider, modified, subagent))
         }
         for root in roots {

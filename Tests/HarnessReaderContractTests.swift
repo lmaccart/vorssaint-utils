@@ -11,6 +11,7 @@ enum HarnessReaderContractTests {
         claudeGolden(suite)
         codexGolden(suite)
         openCodeGolden(suite)
+        ohMyPiGolden(suite)
         copilotGolden(suite)
         cursorGolden(suite)
     }
@@ -116,6 +117,32 @@ enum HarnessReaderContractTests {
         let reset = line(#"{"type":"reset"}"#)
         suite.expect(reader.parse(reset, state: &state, now: now) == [.reset(now)],
                      "an OpenCode reset restarts every session")
+    }
+
+    private static func ohMyPiGolden(_ suite: TestSuite) {
+        let now = Date(timeIntervalSince1970: 0)
+        var state = AgentLogState()
+        let reader = AgentProvider.omp.reader
+        let session = line(#"{"type": "session", "version": 3, "id": "s_omp_1", "timestamp": "2026-09-27T15:00:00.000Z", "cwd": "/Users/me/code/app"}"#)
+        suite.expect(reader.parse(session, state: &state, now: now).isEmpty
+                        && state.session == "s_omp_1" && state.project == "app",
+                     "an Oh My Pi session header names the session and its project")
+        let user = line(#"{"type": "message", "id": "u1", "timestamp": "2026-09-27T15:00:00.000Z", "message": {"role": "user", "content": [{"type": "text", "text": "go"}]}}"#)
+        let began = reader.parse(user, state: &state, now: now)
+        suite.expect(began.first == .turnBegan(AgentTimestamp.parse("2026-09-27T15:00:00.000Z")!),
+                     "an Oh My Pi prompt opens its session turn")
+        let tool = line(#"{"type": "message", "id": "a1", "timestamp": "2026-09-27T15:00:10.000Z", "message": {"role": "assistant", "model": "omp-test-model", "usage": {"input": 10, "output": 5, "cacheRead": 2, "cacheWrite": 1, "cost": {"total": 0.25}}, "stopReason": "toolUse"}}"#)
+        let working = reader.parse(tool, state: &state, now: now)
+        suite.expect(working.last == .turnActive(AgentTimestamp.parse("2026-09-27T15:00:10.000Z")!)
+                        && working.contains { if case .usage = $0 { return true }; return false },
+                     "an Oh My Pi reply that called tools counts and keeps working")
+        let stop = line(#"{"type": "message", "id": "a2", "timestamp": "2026-09-27T15:00:20.000Z", "message": {"role": "assistant", "model": "omp-test-model", "usage": {"input": 10, "output": 5, "cacheRead": 2, "cacheWrite": 1, "cost": {"total": 0.25}}, "stopReason": "stop"}}"#)
+        suite.expect(reader.parse(stop, state: &state, now: now).last
+                        == .turnEnded(AgentTimestamp.parse("2026-09-27T15:00:20.000Z")!, completed: true, duration: nil),
+                     "an Oh My Pi reply that stopped ends its turn")
+        let noise = line(#"{"type": "custom", "customType": "reminder", "data": {"text": "private"}}"#)
+        suite.expect(reader.parse(noise, state: &state, now: now).isEmpty,
+                     "an unrelated Oh My Pi entry parses to nothing")
     }
 
     private static func copilotGolden(_ suite: TestSuite) {

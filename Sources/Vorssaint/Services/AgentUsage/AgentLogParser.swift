@@ -234,6 +234,12 @@ enum AgentLogParser {
         OpenCodeReader().parse(line, state: &state, now: now)
     }
 
+    // MARK: Oh My Pi
+
+    static func parseOhMyPi(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+        OhMyPiReader().parse(line, state: &state, now: now)
+    }
+
     // MARK: GitHub Copilot
 
     /// Copilot CLI and the GitHub Copilot app share an append-only event log.

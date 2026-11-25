@@ -19,6 +19,7 @@ struct NotchAgentsView: View {
     @AppStorage(DefaultsKey.notchAgentsOpenCode) private var opencode = true
     @AppStorage(DefaultsKey.notchAgentsCopilot) private var copilot = true
     @AppStorage(DefaultsKey.notchAgentsCursor) private var cursor = true
+    @AppStorage(DefaultsKey.notchAgentsOhMyPi) private var omp = true
 
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
@@ -33,7 +34,7 @@ struct NotchAgentsView: View {
     /// Only agents that left something on this Mac, or whose accounts were
     /// added, get cards.
     private var providers: [AgentProvider] {
-        _ = (claude, codex, opencode, copilot, cursor)
+        _ = (claude, codex, opencode, copilot, cursor, omp)
         return NotchAgentSupport.pageProviders(snapshot: usage.snapshot, hasCodexAccounts: !codexAccounts.isEmpty,
                                                hasClaudeAccount: !usage.claudeProfile.isDefault)
     }
@@ -434,8 +435,8 @@ private struct NotchAgentLimitsCard: View {
         } else if provider == .claude {
             Text(text.noSession).font(.system(size: 10.5)).foregroundStyle(.secondary)
             setUpLimits
-        } else if provider == .opencode {
-            let todayUsage = snapshot.usage(.today).byProvider[.opencode]
+        } else if provider == .opencode || provider == .omp {
+            let todayUsage = snapshot.usage(.today).byProvider[provider]
             if let todayUsage, todayUsage.tokens.total > 0 || todayUsage.requests > 0 || todayUsage.cost > 0 {
                 let amount = AgentFormat.cost(todayUsage)
                 VStack(alignment: .leading, spacing: 3) {

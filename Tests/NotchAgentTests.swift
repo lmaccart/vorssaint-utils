@@ -19,6 +19,7 @@ enum NotchAgentTests {
         offlineTurns(suite)
         codexParsing(suite)
         openCodeParsing(suite)
+        OhMyPiAgentTests.run(suite)
         CopilotAgentTests.run(suite)
         CursorAgentTests.run(suite)
         HarnessReaderContractTests.run(suite)
@@ -3275,11 +3276,11 @@ enum NotchAgentTests {
         suite.expect(NotchAgentSupport.cards(in: defaults) == [.trend, .spend, .limits, .live, .models, .resets],
                      "the saved order ignores unknown and repeated cards and appends new ones")
         defaults.set(false, forKey: DefaultsKey.notchAgentsCodex)
-        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .opencode, .copilot, .cursor], "an agent can be left out")
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .opencode, .copilot, .cursor, .omp], "an agent can be left out")
         defaults.set(false, forKey: DefaultsKey.notchAgentsOpenCode)
-        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .copilot, .cursor], "OpenCode keeps its own preference")
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .copilot, .cursor, .omp], "OpenCode keeps its own preference")
         defaults.set(false, forKey: DefaultsKey.notchAgentsCopilot)
-        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .cursor], "Copilot keeps its own preference")
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .cursor, .omp], "Copilot keeps its own preference")
         var installed = AgentUsageSnapshot(loaded: true)
         installed.cursorProjectsFound = true
         suite.expect(NotchAgentSupport.pageProviders(snapshot: installed, hasCodexAccounts: false, hasClaudeAccount: false,
@@ -3290,7 +3291,9 @@ enum NotchAgentTests {
         suite.expect(NotchAgentSupport.pageProviders(snapshot: installed, hasCodexAccounts: false, hasClaudeAccount: true,
                                                      in: defaults) == [.claude],
                      "an existing directory or prior activity cannot bring a disabled Cursor back onto the page")
-        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude], "multiple agents can be left out")
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .omp], "multiple agents can be left out")
+        defaults.set(false, forKey: DefaultsKey.notchAgentsOhMyPi)
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude], "Oh My Pi can be left out too")
         defaults.set("unknown", forKey: DefaultsKey.notchAgentsLimitFocus)
         suite.expect(NotchAgentSupport.limitFocus(in: defaults) == .mostUsed, "an unknown limit choice shows the most used")
         defaults.set(NotchAgentLimitFocus.weekly.rawValue, forKey: DefaultsKey.notchAgentsLimitFocus)
@@ -3303,7 +3306,7 @@ enum NotchAgentTests {
                      "alerts follow their switches and a budget must be positive")
 
         let keys = [DefaultsKey.notchAgentsEnabled, DefaultsKey.notchAgentsClaude, DefaultsKey.notchAgentsCodex,
-                    DefaultsKey.notchAgentsOpenCode, DefaultsKey.notchAgentsCopilot, DefaultsKey.notchAgentsCursor,
+                    DefaultsKey.notchAgentsOpenCode, DefaultsKey.notchAgentsCopilot, DefaultsKey.notchAgentsCursor, DefaultsKey.notchAgentsOhMyPi,
                     DefaultsKey.notchAgentsCardOrder, DefaultsKey.notchAgentsHiddenCards, DefaultsKey.notchAgentsPeriod,
                     DefaultsKey.notchAgentsLimitDisplay, DefaultsKey.notchAgentsLimitFocus, DefaultsKey.notchAgentsLiveActivity, DefaultsKey.notchAgentsReadout,
                     DefaultsKey.notchAgentsFinishAlert, DefaultsKey.notchAgentsFinishMinimum, DefaultsKey.notchAgentsLimitAlert,
